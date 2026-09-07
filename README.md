@@ -12,6 +12,10 @@ watching an unbroken run accumulate.
 - Optional **skip days** (long-press today), off by default. A skip bridges a
   streak without extending it, and is not counted as a lit day.
 
+A thin rule in the left gutter traces each run of days down the year — bright
+for the run you're currently in, dim for finished ones — so a streak reads as a
+length rather than just a number. Isolated single days are left out.
+
 Current streak has a grace period: it counts through yesterday and stays alive
 all day, so it doesn't read zero every morning before you've tapped.
 

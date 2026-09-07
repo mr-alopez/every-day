@@ -77,7 +77,19 @@ button{background:none;border:0;cursor:pointer}
 .row.mstart{border-top:1px solid var(--line);padding-top:var(--gap);margin-top:calc(var(--gap) / 2)}
 .row.mstart:first-child{border-top:0;margin-top:0;padding-top:0}
 .mlabel{font-size:10.5px;letter-spacing:.09em;text-transform:uppercase;color:var(--dim);
-  text-align:right;padding-right:8px;white-space:nowrap;overflow:hidden}
+  height:var(--cell);padding-right:13px;white-space:nowrap;position:relative;overflow:visible;
+  display:flex;align-items:center;justify-content:flex-end}
+
+/* Streak spine: a rule down the gutter tracing the weeks each run spans.
+   Segments are drawn per row and stretched across the gap to the next row, so a
+   run reads as one continuous line rather than a stack of dashes. */
+.spine{position:absolute;right:3px;top:0;width:3px;height:100%;background:var(--ac);opacity:.26}
+.spine.now{opacity:1;box-shadow:0 0 8px -2px var(--ac-glow)}
+.spine.capTop{border-radius:2px 2px 0 0}
+.spine.capBot{border-radius:0 0 2px 2px}
+.spine.capTop.capBot{border-radius:2px}
+.spine.gapSm{height:calc(100% + var(--gap))}
+.spine.gapBig{height:calc(100% + var(--gap) * 2.5 + 1px)}
 
 .cell{height:var(--cell);border-radius:9px;border:1px solid rgba(255,255,255,.085);
   background:rgba(255,255,255,.012);position:relative;overflow:hidden;transition:border-color .2s}
@@ -107,8 +119,9 @@ body.yv .row.mstart{border-top:1px solid var(--line);padding-top:2px}
 body.yv .cell{border-radius:3px}
 body.yv .cell.today{outline-width:1.5px;outline-offset:1.5px}
 body.yv .cell.lit{box-shadow:0 0 6px -2px var(--ac-glow),inset 0 1px 0 rgba(255,255,255,.25)}
-body.yv .mlabel{font-size:var(--ml,8px);line-height:1;height:var(--cell);padding-right:4px;letter-spacing:.03em;
+body.yv .mlabel{font-size:var(--ml,8px);line-height:1;height:var(--cell);padding-right:7px;letter-spacing:.03em;
   display:flex;align-items:center;justify-content:flex-end}
+body.yv .spine{right:2px;width:2px}
 body.yv #grid{padding-bottom:0;margin:0 auto}
 body.yv .wrap{padding:0 10px}
 
@@ -379,6 +392,57 @@ function renderWeekhead(){
 }
 function cellClass(st){ return st === 1 ? 'lit' : (st === 2 ? 'skip' : ''); }
 
+/* Continuous runs of lit days, with skips bridging but not extending them —
+   the same rule the streak stats use. Returned as [startIndex, lastLitIndex]
+   day-of-year pairs; single isolated days are left out so the gutter does not
+   speckle. */
+function computeRuns(y){
+  var total = yearLen(y), runs = [], start = -1, lastLit = -1, i, s;
+  for (i = 0; i < total; i++){
+    s = stateAt(y, i);
+    if (s === 1){ if (start < 0) start = i; lastLit = i; }
+    else if (s !== 2){                       /* a skip bridges; anything else breaks */
+      if (start >= 0) runs.push([start, lastLit]);
+      start = -1;
+    }
+  }
+  if (start >= 0) runs.push([start, lastLit]);
+  return runs.filter(function(r){ return r[1] > r[0]; });
+}
+
+function renderSpines(){
+  var grid = document.getElementById('grid'), rows = grid.children;
+  var old = grid.querySelectorAll('.spine'), i;
+  for (i = 0; i < old.length; i++) old[i].parentNode.removeChild(old[i]);
+
+  var lead = new Date(YEAR, 0, 1).getDay();
+  var now = today(), isCur = (YEAR === now.getFullYear());
+  var tIdx = isCur ? dayIndex(now) : -1;
+
+  computeRuns(YEAR).forEach(function(run){
+    var r0 = Math.floor((lead + run[0]) / 7), r1 = Math.floor((lead + run[1]) / 7);
+    var live = isCur && run[1] >= tIdx - 1;   /* ends today or yesterday — grace rule */
+    var lit = 0;
+    for (var k = run[0]; k <= run[1]; k++) if (stateAt(YEAR, k) === 1) lit++;
+    var a = dateAt(YEAR, run[0]), b = dateAt(YEAR, run[1]);
+    var label = lit + ' day' + (lit === 1 ? '' : 's') + ', ' +
+      MONTHS[a.getMonth()] + ' ' + a.getDate() + ' – ' + MONTHS[b.getMonth()] + ' ' + b.getDate();
+
+    for (var r = r0; r <= r1; r++){
+      var row = rows[r];
+      if (!row || !row.firstElementChild) continue;
+      var cls = 'spine' + (live ? ' now' : '');
+      if (r === r0) cls += ' capTop';
+      if (r === r1) cls += ' capBot';
+      else cls += (rows[r + 1] && rows[r + 1].className.indexOf('mstart') >= 0) ? ' gapBig' : ' gapSm';
+      var sp = document.createElement('i');
+      sp.className = cls;
+      sp.title = label;
+      row.firstElementChild.appendChild(sp);
+    }
+  });
+}
+
 function renderGrid(){
   var grid = document.getElementById('grid');
   var now = today(), tIso = iso(now), isCurYear = (YEAR === now.getFullYear());
@@ -423,6 +487,7 @@ function renderGrid(){
   }
   grid.innerHTML = '';
   grid.appendChild(frag);
+  renderSpines();
   bindToday();
 }
 
@@ -438,6 +503,7 @@ function setToday(next){
   saveDays(IX.activeId, DAYS);
   todayEl.className = 'cell tap today ' + cellClass(next);
   renderStats();
+  renderSpines();
 }
 function tapToday(){
   var st = DAYS[iso(today())] || 0;
@@ -601,7 +667,7 @@ function renderChrome(){
     ro.appendChild(d);
   }
   document.getElementById('hint').textContent = isCur
-    ? 'Only today can be lit. Tap again before midnight to undo a mis-tap — after that the day is fixed. Missed days cannot be filled in.'
+    ? 'Only today can be lit. Tap again before midnight to undo a mis-tap — after that the day is fixed. Missed days cannot be filled in. The rule in the margin traces each run.'
       + (IX.settings.skipEnabled ? ' Long-press today for a skip day.' : '')
     : 'Viewing a finished year.';
 }
