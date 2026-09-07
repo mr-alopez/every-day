@@ -33,10 +33,15 @@ a fresh grid and prior years stay readable through the year selector.
 | `manifest.webmanifest` | standalone display, icons, theme |
 | `icon*.png`, `icon.svg` | app icons |
 
-## Install on iOS
+## Install
 
-Open the Pages URL in Safari, then Share → Add to Home Screen. It launches
-fullscreen and works offline.
+**Android (Chrome):** open the Pages URL, then the ⋮ menu → Add to Home screen /
+Install app. The manifest gives it standalone display, the icon, and the theme.
+
+**iOS (Safari):** open the Pages URL, then Share → Add to Home Screen. iOS ignores
+the manifest for install and reads the `apple-*` meta tags instead.
+
+Either way it launches fullscreen and works offline.
 
 Updates land on the **next** launch: the service worker serves the cached copy
 immediately and refreshes in the background, so a new deploy needs one extra
