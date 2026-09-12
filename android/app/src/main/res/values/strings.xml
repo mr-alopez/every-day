@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Every Day</string>
+    <string name="title_activity_main">Every Day</string>
+    <string name="package_name">io.github.mralopez.everyday</string>
+    <string name="custom_url_scheme">io.github.mralopez.everyday</string>
+</resources>

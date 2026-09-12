@@ -32,21 +32,59 @@ a fresh grid and prior years stay readable through the year selector.
 
 | | |
 |---|---|
-| `index.html` | the entire app — vanilla HTML/CSS/JS, no dependencies, no build |
-| `sw.js` | service worker, cache-first so it opens with no signal |
+| `index.html` | the entire web app — vanilla HTML/CSS/JS, no dependencies, no build |
+| `sw.js` | service worker, cache-first so the web version opens with no signal |
 | `manifest.webmanifest` | standalone display, icons, theme |
 | `icon*.png`, `icon.svg` | app icons |
+| `src/bridge.js` | the only bundled file — exposes the notification plugin on `window` |
+| `scripts/copy-web.mjs` | stages the web app into `www/` for the Android build |
+| `android/` | Capacitor project for the native build |
+
+The repo root is what GitHub Pages serves. The Android build is assembled into
+`www/` (generated, gitignored) so the two never drift.
 
 ## Install
 
-**Android (Chrome):** open the Pages URL, then the ⋮ menu → Add to Home screen /
-Install app. The manifest gives it standalone display, the icon, and the theme.
+**Android app (with reminders):** see *Building the Android app* below.
 
-**iOS (Safari):** open the Pages URL, then Share → Add to Home Screen. iOS ignores
-the manifest for install and reads the `apple-*` meta tags instead.
+**Android / iOS as a web app (no reminders):** open the Pages URL, then Chrome's
+⋮ menu → Add to Home screen, or Safari's Share → Add to Home Screen. Launches
+fullscreen and works offline. Updates land on the *next* launch — the service
+worker serves the cached copy immediately and refreshes in the background.
 
-Either way it launches fullscreen and works offline.
+## Reminders
 
-Updates land on the **next** launch: the service worker serves the cached copy
-immediately and refreshes in the background, so a new deploy needs one extra
-open to appear.
+A daily reminder is only available in the Android app. Web can't do it: the API
+for scheduling a local notification, Notification Triggers, was abandoned, and
+Web Push would need a server — which can't know whether you already tapped
+today, because your days never leave the device.
+
+The native build schedules a rolling 14-day window of one-shot notifications and
+recomputes it whenever anything changes. A day's notification is dropped once
+**every** habit is lit or skipped, so a reminder that does fire always means a
+genuinely dark day. If you stop opening the app they keep arriving daily.
+
+Alarms are inexact — expect a few minutes' drift, more if the phone is dozing.
+
+## Building the Android app
+
+Needs Android Studio (bundles the JDK) and Node.
+
+```
+npm install
+npm run sync     # stage www/, bundle the bridge, sync the Android project
+npm run open     # open in Android Studio, then Run
+```
+
+`npm run sync` after every change to `index.html` — the Android build uses the
+copy in `www/`, not the repo root.
+
+### Careful
+
+- **Uninstalling the app deletes your history.** It lives in the WebView's
+  localStorage. Export JSON regularly; that's the only backup.
+- **Back up the signing keystore.** Without it a new build can't install over
+  the old one, and reinstalling means uninstalling — which wipes your days.
+- A debug build and a release build have different signatures, so moving from
+  one to the other also wipes storage. Settle on the release build *before*
+  importing real data.

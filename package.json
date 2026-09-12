@@ -1,0 +1,21 @@
+{
+  "name": "every-day",
+  "version": "1.0.0",
+  "private": true,
+  "description": "A year of days, lit one at a time",
+  "scripts": {
+    "copy": "node scripts/copy-web.mjs",
+    "bundle": "esbuild src/bridge.js --bundle --format=iife --minify --outfile=www/bridge.js",
+    "sync": "npm run copy && npm run bundle && cap sync android",
+    "open": "cap open android"
+  },
+  "dependencies": {
+    "@capacitor/android": "^8.5.2",
+    "@capacitor/cli": "^8.5.2",
+    "@capacitor/core": "^8.5.2",
+    "@capacitor/local-notifications": "^8.3.1"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.2"
+  }
+}

@@ -175,6 +175,11 @@ dialog::backdrop{background:rgba(0,0,0,.66);-webkit-backdrop-filter:blur(3px);ba
   background:var(--dim);transition:.2s}
 .tgl.on{background:var(--ac-dim);border-color:var(--ac-soft)}
 .tgl.on::after{left:20px;background:var(--ac)}
+.timerow{display:flex;align-items:center;gap:8px;margin-top:10px}
+.timerow label{font-size:11.5px;color:var(--dim2);text-transform:uppercase;letter-spacing:.08em}
+.timerow input{background:var(--panel);border:1px solid var(--line);border-radius:8px;
+  padding:6px 9px;font-size:13.5px;font-variant-numeric:tabular-nums;color-scheme:dark}
+.timerow input:focus{outline:none;border-color:var(--line2)}
 .btns{display:flex;gap:8px}
 .btns .mini{flex:1;text-align:center;padding:10px}
 .note{font-size:11px;color:var(--dim2);margin:9px 0 0;line-height:1.55}
@@ -235,6 +240,18 @@ dialog::backdrop{background:rgba(0,0,0,.66);-webkit-backdrop-filter:blur(3px);ba
         <p>Long-press today's cell for a dimmer "planned rest" state. It keeps the streak alive but does not count as a lit day.</p>
       </div>
       <button class="tgl" id="tglSkip" role="switch" aria-checked="false" aria-label="Allow skip days"></button>
+    </div>
+  </div>
+
+  <div class="sect" id="remSect" hidden>
+    <h3>Reminder</h3>
+    <div class="opt">
+      <div class="sp">
+        <label for="tglRem">Daily reminder</label>
+        <p>A notification at the time below, but only on days you haven't lit yet. Once every habit is done for the day it stays quiet.</p>
+        <div class="timerow"><label for="remTime">At</label><input type="time" id="remTime" value="20:00"></div>
+      </div>
+      <button class="tgl" id="tglRem" role="switch" aria-checked="false" aria-label="Daily reminder"></button>
     </div>
   </div>
 
@@ -504,6 +521,7 @@ function setToday(next){
   todayEl.className = 'cell tap today ' + cellClass(next);
   renderStats();
   renderSpines();
+  syncReminders();
 }
 function tapToday(){
   var st = DAYS[iso(today())] || 0;
@@ -686,6 +704,111 @@ function fullRender(scroll){
   renderStats();
   if (yearView) sizeYearView();
   else if (scroll) scrollToToday(false);
+  syncReminders();   /* habit set or data may have changed what "done today" means */
+}
+
+/* ============================ daily reminder ============================ */
+/* Native only. Local notifications are scheduled ahead of time, so "only if
+   today is unlit" cannot be one repeating alarm. Instead we keep a rolling
+   window of one-shot notifications and recompute it whenever state changes.
+
+   A future day's notification only ever fires if the app was not opened that
+   day — because opening it runs syncReminders(), which drops that day's entry
+   once every habit is done. So a notification always means a genuinely dark day. */
+var REM_DAYS = 14;
+var LN = null;
+function nativeReady(){
+  if (LN) return LN;
+  var n = window.EveryDayNative;
+  if (n && n.Capacitor && n.Capacitor.isNativePlatform && n.Capacitor.isNativePlatform()){
+    LN = n.LocalNotifications;
+  }
+  return LN;
+}
+function remCfg(){
+  if (!IX.settings.reminder) IX.settings.reminder = { enabled:false, time:'20:00' };
+  return IX.settings.reminder;
+}
+/* id = year * 1000 + day-of-year — fits int32 and makes "cancel today" direct */
+function remId(d){ return d.getFullYear() * 1000 + dayIndex(d); }
+
+/* Done for the day means every habit is lit or skipped — one habit finished
+   while another is still dark is not done. */
+function allDoneOn(d){
+  var key = iso(d);
+  for (var i = 0; i < IX.habits.length; i++){
+    var st = loadDays(IX.habits[i].id)[key] || 0;
+    if (st !== 1 && st !== 2) return false;
+  }
+  return true;
+}
+
+/* Serialised. syncReminders() cancels then schedules across several awaits, so
+   two overlapping runs can interleave and leave the stale run's list in place —
+   e.g. adding a habit right after lighting a day used to lose the re-opened
+   reminder. One run at a time; a request arriving mid-run re-runs once at the
+   end, so the last requested state always wins. */
+var remBusy = null, remAgain = false;
+function syncReminders(){
+  if (remBusy){ remAgain = true; return remBusy; }
+  remBusy = doSyncReminders().then(function(){
+    remBusy = null;
+    if (remAgain){ remAgain = false; return syncReminders(); }
+  });
+  return remBusy;
+}
+
+function doSyncReminders(){
+  var ln = nativeReady();
+  if (!ln) return Promise.resolve();
+  return ln.getPending().then(function(res){
+    var mine = (res.notifications || []).filter(function(n){ return n.id > 1000000; });
+    return mine.length ? ln.cancel({ notifications: mine }) : null;
+  }).then(function(){
+    var cfg = remCfg();
+    if (!cfg.enabled) return null;
+    var hm = String(cfg.time || '20:00').split(':');
+    var h = parseInt(hm[0], 10) || 0, m = parseInt(hm[1], 10) || 0;
+    var base = today(), list = [], now = new Date();
+
+    for (var k = 0; k < REM_DAYS; k++){
+      var d = new Date(base.getFullYear(), base.getMonth(), base.getDate() + k);
+      var at = new Date(d.getFullYear(), d.getMonth(), d.getDate(), h, m, 0);
+      /* today only counts if the time hasn't passed and the day is still open */
+      if (k === 0 && (at <= now || allDoneOn(d))) continue;
+      list.push({
+        id: remId(d),
+        title: 'Every Day',
+        body: "Today's cell is still dark.",
+        schedule: { at: at, allowWhileIdle: true },
+        smallIcon: 'ic_stat_icon_config_sample'
+      });
+    }
+    return list.length ? ln.schedule({ notifications: list }) : null;
+  }).catch(function(e){
+    if (window.console) console.warn('reminder sync failed', e);
+  });
+}
+
+function enableReminder(on){
+  var ln = nativeReady();
+  var cfg = remCfg();
+  if (!on){ cfg.enabled = false; saveIndex(); renderSettings(); return syncReminders(); }
+  if (!ln){ toast('Reminders need the Android app'); return Promise.resolve(); }
+  return ln.checkPermissions().then(function(p){
+    return p.display === 'granted' ? p : ln.requestPermissions();
+  }).then(function(p){
+    if (p.display !== 'granted'){
+      cfg.enabled = false; saveIndex(); renderSettings();
+      toast('Notifications are blocked for this app');
+      return null;
+    }
+    cfg.enabled = true; saveIndex(); renderSettings();
+    return syncReminders().then(function(){ toast('Reminder set for ' + cfg.time); });
+  }).catch(function(){
+    cfg.enabled = false; saveIndex(); renderSettings();
+    toast('Could not set the reminder');
+  });
 }
 
 /* ============================ settings ============================ */
@@ -772,6 +895,16 @@ function renderSettings(){
   var t = document.getElementById('tglSkip');
   t.classList.toggle('on', !!IX.settings.skipEnabled);
   t.setAttribute('aria-checked', IX.settings.skipEnabled ? 'true' : 'false');
+
+  /* the reminder section only exists on the native build */
+  var sect = document.getElementById('remSect');
+  sect.hidden = !nativeReady();
+  if (!sect.hidden){
+    var cfg = remCfg(), r = document.getElementById('tglRem');
+    r.classList.toggle('on', !!cfg.enabled);
+    r.setAttribute('aria-checked', cfg.enabled ? 'true' : 'false');
+    document.getElementById('remTime').value = cfg.time || '20:00';
+  }
 }
 
 function addHabit(rawName){
@@ -894,6 +1027,16 @@ document.getElementById('tglSkip').onclick = function(){
   renderSettings();
   renderChrome();
 };
+document.getElementById('tglRem').onclick = function(){
+  enableReminder(!remCfg().enabled);
+};
+document.getElementById('remTime').onchange = function(e){
+  var v = e.target.value;
+  if (!/^\d{2}:\d{2}$/.test(v)){ e.target.value = remCfg().time; return; }
+  remCfg().time = v;
+  saveIndex();
+  if (remCfg().enabled) syncReminders().then(function(){ toast('Reminder moved to ' + v); });
+};
 document.getElementById('expBtn').onclick = exportData;
 document.getElementById('impBtn').onclick = function(){ document.getElementById('impFile').click(); };
 document.getElementById('impFile').onchange = function(e){
@@ -925,7 +1068,11 @@ function checkRollover(){
   }
   scheduleMidnight();
 }
-document.addEventListener('visibilitychange', function(){ if (!document.hidden) checkRollover(); });
+document.addEventListener('visibilitychange', function(){
+  if (document.hidden) return;
+  checkRollover();
+  syncReminders();
+});
 
 /* ============================ boot ============================ */
 saveIndex();   /* pin the habit id on first run, so day data never orphans */
@@ -941,7 +1088,7 @@ if (document.fonts && document.fonts.ready) document.fonts.ready.then(recentre).
 /* Register the service worker so the app opens with no signal. It needs a secure
    context, so this is a no-op over plain http on a LAN address — the app still
    works there, it just is not available offline. */
-if ('serviceWorker' in navigator && window.isSecureContext){
+if ('serviceWorker' in navigator && window.isSecureContext && !window.Capacitor){
   window.addEventListener('load', function(){
     navigator.serviceWorker.register('sw.js').catch(function(){});
   });
