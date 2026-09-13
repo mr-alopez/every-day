@@ -20,6 +20,17 @@ SS = 3
 
 DENSITIES = [("mdpi", 1.0), ("hdpi", 1.5), ("xhdpi", 2.0), ("xxhdpi", 3.0), ("xxxhdpi", 4.0)]
 
+# The canonical design, identical to the web/PWA icons: a 180-unit canvas with a
+# 3x3 grid spanning 98 units (54%). Everything else is derived from it by scale,
+# so the launcher icon and the web icon are the same drawing at different sizes.
+D_UNITS, D_CELL, D_GAP, D_RADIUS, D_STROKE = 180.0, 26.0, 10.0, 7.0, 2.6
+
+
+def geom(units):
+    """Scale the canonical design onto a canvas of `units`."""
+    k = units / D_UNITS
+    return D_CELL * k, D_GAP * k, D_RADIUS * k, D_STROKE * k
+
 
 def sdf(px, py, cx, cy, half, r):
     dx, dy = abs(px - cx) - (half - r), abs(py - cy) - (half - r)
@@ -109,16 +120,20 @@ res = sys.argv[1]
 for name, mult in DENSITIES:
     d = os.path.join(res, "mipmap-" + name)
 
-    # adaptive foreground: 108dp canvas, grid kept inside the 72dp safe zone
+    # Adaptive foreground on a 108dp canvas. Using the canonical proportions
+    # means the launcher's safe-zone crop lands exactly where it did on the
+    # maskable PWA icon, so the two look the same on the home screen.
     fg = int(round(108 * mult))
-    rows, ch = render(fg, 108, 17.6, 6.6, 4.8, 1.8, alpha=True, circle=False)
+    c, g, r, st = geom(108)
+    rows, ch = render(fg, 108, c, g, r, st, alpha=True, circle=False)
     write_png(os.path.join(d, "ic_launcher_foreground.png"), fg, rows, ch)
 
-    # legacy square + round: 48dp canvas, design fills more of the frame
+    # Legacy square + round at 48dp, same proportions, opaque.
     lg = int(round(48 * mult))
-    rows, ch = render(lg, 48, 9.6, 3.6, 2.6, 1.0, alpha=False, circle=False)
+    c, g, r, st = geom(48)
+    rows, ch = render(lg, 48, c, g, r, st, alpha=False, circle=False)
     write_png(os.path.join(d, "ic_launcher.png"), lg, rows, ch)
-    rows, ch = render(lg, 48, 9.6, 3.6, 2.6, 1.0, alpha=False, circle=True)
+    rows, ch = render(lg, 48, c, g, r, st, alpha=False, circle=True)
     write_png(os.path.join(d, "ic_launcher_round.png"), lg, rows, ch)
 
     print("%-9s foreground %dpx, legacy %dpx" % (name, fg, lg))
