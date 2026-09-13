@@ -935,20 +935,50 @@ function deleteHabit(id){
   toast('Habit deleted');
 }
 
-function exportData(){
+function buildExport(){
   var out = { app:'every-day', version:1, exported:new Date().toISOString(), index:IX, habits:{} };
   IX.habits.forEach(function(h){ out.habits[h.id] = { days: loadDays(h.id) }; });
-  var blob = new Blob([JSON.stringify(out, null, 2)], { type:'application/json' });
-  var url = URL.createObjectURL(blob);
-  var a = document.createElement('a');
-  a.href = url;
-  a.download = 'every-day-' + iso(today()) + '.json';
-  document.body.appendChild(a);
-  a.click();
-  a.parentNode.removeChild(a);
-  setTimeout(function(){ URL.revokeObjectURL(url); }, 1000);
-  toast('Exported');
+  return { name:'every-day-' + iso(today()) + '.json', json:JSON.stringify(out, null, 2) };
 }
+
+function exportData(){
+  var e = buildExport();
+  var n = window.EveryDayNative;
+
+  if (!(n && n.Capacitor && n.Capacitor.isNativePlatform())){
+    /* web: an ordinary blob download, which Chrome honours */
+    var blob = new Blob([e.json], { type:'application/json' });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = e.name;
+    document.body.appendChild(a);
+    a.click();
+    a.parentNode.removeChild(a);
+    setTimeout(function(){ URL.revokeObjectURL(url); }, 1000);
+    toast('Exported');
+    return;
+  }
+
+  /* Native: the WebView silently ignores <a download> — it used to report
+     "Exported" and write nothing at all. Write a real file, then offer the
+     share sheet, because a backup sitting on the same phone does not survive
+     losing the phone. */
+  n.Filesystem.writeFile({
+    path: e.name, data: e.json,
+    directory: n.Directory.Documents, encoding: n.Encoding.UTF8
+  }).then(function(res){
+    toast('Saved to Documents');
+    return n.Share.share({
+      title: 'Every Day backup',
+      url: res.uri,
+      dialogTitle: 'Send your backup somewhere safe'
+    }).catch(function(){ /* sheet dismissed — the file is written regardless */ });
+  }).catch(function(err){
+    toast('Export failed — ' + ((err && err.message) || 'could not write the file'));
+  });
+}
+
 function importData(file){
   var fr = new FileReader();
   fr.onload = function(){

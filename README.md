@@ -82,7 +82,10 @@ copy in `www/`, not the repo root.
 ### Careful
 
 - **Uninstalling the app deletes your history.** It lives in the WebView's
-  localStorage. Export JSON regularly; that's the only backup.
+  localStorage. Export JSON regularly; that's the only backup. In the Android
+  app, Export writes the file to your Documents folder and then opens the share
+  sheet — send it off the device, since a backup on the same phone dies with it.
+  (The web build still uses an ordinary browser download.)
 - **Back up the signing keystore.** Without it a new build can't install over
   the old one, and reinstalling means uninstalling — which wipes your days.
 - A debug build and a release build have different signatures, so moving from
