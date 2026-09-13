@@ -38,6 +38,7 @@ a fresh grid and prior years stay readable through the year selector.
 | `icon*.png`, `icon.svg` | app icons |
 | `src/bridge.js` | the only bundled file — exposes the notification plugin on `window` |
 | `scripts/copy-web.mjs` | stages the web app into `www/` for the Android build |
+| `scripts/make-launcher-icons.py` | regenerates the Android launcher icons into `res/mipmap-*` |
 | `android/` | Capacitor project for the native build |
 
 The repo root is what GitHub Pages serves. The Android build is assembled into
