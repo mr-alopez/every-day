@@ -7,3 +7,7 @@ android/.gradle/
 android/local.properties
 *.keystore
 *.jks
+
+# build outputs and IDE settings
+android/app/release/
+.idea/
